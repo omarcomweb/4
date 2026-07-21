@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl"><head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=1114">
-    <title>ل</title>
+    <title>المشغل الرياضي الشامل</title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -186,6 +186,10 @@ window.firebaseConfig = {
             -moz-user-select: none;
             -ms-user-select: none;
         }
+
+        /* سكرول بار خاص للنافذة الجديدة بتاعت سحب الاطارات */
+        #deep-scan-list::-webkit-scrollbar { width: 8px; }
+        #deep-scan-list::-webkit-scrollbar-thumb { background: #555; border-radius: 5px; }
     </style>
 <style id="check-iframe-detector-style">
     .check-iframe-detector-highlight {
@@ -413,11 +417,10 @@ window.firebaseConfig = {
         <div class="row">
             <span style="color:#f39c12; font-weight:bold; margin-left: 5px; white-space: nowrap;">الإدارة:</span>
             <input type="text" id="iframe-extractor-url" placeholder="رابط موقع لسحب الاطارات (iframes)..." style="width: 200px; border-radius: 5px; border: 1px solid #1abc9c; background: #111; color: #fff;" data-ddg-inputtype="unknown">
-            <button class="btn" style="border-color:#1abc9c; color:#1abc9c; background:#111;" onclick="window.extractIframesFromURL()">🕸️ سحب Iframes</button>
+            <button class="btn" style="border-color:#1abc9c; color:#1abc9c; background:#111;" onclick="window.runDeepScan(document.getElementById('iframe-extractor-url').value)">🕸️ سحب Iframes</button>
             <button class="btn" style="border-color:#e056fd; color:#e056fd;" onclick="window.addNewFolder()">📁 إضافة مجلد</button>
             <button class="btn" style="border-color:#ff9f43; color:#ff9f43;" onclick="window.addNewChannel()">📺 إضافة قناة</button>
             
-            <!-- الزرار الجديد الخاص بتغيير الفايربيس -->
             <button class="btn" style="border-color:#34495e; color:#fff; background:#34495e;" onclick="window.openFirebaseModal()">⚙️ سيرفر فايربيس</button>
 
             <button id="btn-xtream" class="btn" onclick="window.openXtreamModal()" style="border-color: rgb(39, 174, 96); color: rgb(39, 174, 96);">📡 حساب اكستريم</button>
@@ -476,7 +479,10 @@ window.firebaseConfig = {
                 
                 <button class="btn" style="border-color:#00a8ff; color:#00a8ff; background:#111;" onclick="window.copySelectedLinks(); window.closeMultiManageModal();">🔗 نسخ روابط المحدد</button>
                 
-                <button class="aplr-link" onclick="window.closePlayerScreen(); window.closeMultiManageModal();" style="background: #e74c3c;">✖ إغلاق الشاشة</button><button class="aplr-link" onclick="window.toggleMobileRotation(); window.closeMultiManageModal();" style="background: #27ae60;">📱 تدوير</button><button class="btn btn-outline" onclick="window.openExternal(); window.closeMultiManageModal();">↗️ فتح خارجي</button><button class="btn" style="background: rgb(0, 136, 204); color: white; border: medium; padding: 6px 15px; border-radius: 50px; font-weight: bold; margin: 0px;" onclick="window.fetchCurrentIframe()">🔗 جلب Iframe</button>
+                <button class="aplr-link" onclick="window.closePlayerScreen(); window.closeMultiManageModal();" style="background: #e74c3c;">✖ إغلاق الشاشة</button><button class="aplr-link" onclick="window.toggleMobileRotation(); window.closeMultiManageModal();" style="background: #27ae60;">📱 تدوير</button><button class="btn btn-outline" onclick="window.openExternal(); window.closeMultiManageModal();">↗️ فتح خارجي</button>
+                
+                <!-- الزرار الذهبي لسحب الاطارات - متبرمج بالكامل وموحد -->
+                <button class="btn" style="background: rgb(0, 136, 204); color: white; border: medium; padding: 6px 15px; border-radius: 50px; font-weight: bold; margin: 0px;" onclick="window.runDeepScan(window.currentPlayingUrl)">🔗 جلب كـل الـ Iframes</button>
             </div>
         </div>
     </div>
@@ -520,7 +526,7 @@ window.firebaseConfig = {
         </div>
     </div>
 
-    <!-- نافذة تعديل الفايربيس الجديدة -->
+    <!-- نافذة تعديل الفايربيس -->
     <div id="firebase-edit-modal" style="display: none;">
         <div class="edit-modal-content">
             <h3 style="color:#3498db;">⚙️ تغيير سيرفر فايربيس</h3>
@@ -541,10 +547,6 @@ window.firebaseConfig = {
     </div>
 
     <script>
-        // ============================================
-        // 1. إعدادات الفايربيس الجديدة (بحفظ وتطبيق مباشر)
-        // ============================================
-        
         let savedFbConfig = localStorage.getItem('customFirebaseConfig');
         if (savedFbConfig) {
             try {
@@ -561,7 +563,6 @@ window.firebaseConfig = {
         }
         window.db = firebase.database();
 
-        // دوال نافذة الفايربيس
         window.openFirebaseModal = function() {
             document.getElementById('firebase-config-box').value = JSON.stringify(window.firebaseConfig, null, 4);
             document.getElementById('firebase-edit-modal').style.display = 'flex';
@@ -572,7 +573,6 @@ window.firebaseConfig = {
                 let newConfig = JSON.parse(document.getElementById('firebase-config-box').value);
                 localStorage.setItem('customFirebaseConfig', JSON.stringify(newConfig));
                 
-                // تحديث السكربت علشان لما تدوس (تحميل كـ HTML) يتحفظ جوه الملف للأبد
                 let fbScript = document.getElementById('firebase-config-script');
                 if(fbScript) fbScript.textContent = "window.firebaseConfig = " + JSON.stringify(newConfig, null, 4) + ";";
                 
@@ -583,9 +583,6 @@ window.firebaseConfig = {
             }
         };
 
-        // ============================================
-        // 2. المتغيرات والدوال الأساسية
-        // ============================================
         window.playerSettings = {};
         window.isAdmin = false; 
         
@@ -638,9 +635,6 @@ window.firebaseConfig = {
             }
         };
 
-        // ============================================
-        // الدالة الذهبية: سحب القنوات القديمة وتشغيلها!
-        // ============================================
         window.syncDOMToState = function() {
             let container = document.getElementById("dynamic-channels-list");
             if(!container) return;
@@ -671,7 +665,6 @@ window.firebaseConfig = {
             }
         };
 
-        // دالة التلوين ورسم القنوات بالأكواد الحقيقية
         window.renderCurrentFolder = function() {
             let container = document.getElementById("dynamic-channels-list");
             if(!container) return;
@@ -765,9 +758,6 @@ window.firebaseConfig = {
             }
         };
 
-        // ============================================
-        // 3. دوال الجلب والحفظ (الفايربيس)
-        // ============================================
         window.normalizeFolders = function(rawFolders) {
             let normalized = { "main": [] };
             try {
@@ -881,10 +871,6 @@ window.firebaseConfig = {
             });
         };
 
-        // ============================================
-        // استخراج وإضافة وإدارة (المنطق الحقيقي الفعال)
-        // ============================================
-        
         window.prevChannel = function() {
             let curFolder = window.folderState.currentFolderId;
             let channels = (window.folderState.folders[curFolder] || []).filter(i => i.type === 'channel');
@@ -1022,9 +1008,273 @@ window.firebaseConfig = {
             a.click();
         };
 
-        window.fetchCurrentIframe = function() {
-            if(window.currentPlayingUrl) { prompt("رابط الإطار الحالي (انسخ من هنا):", window.currentPlayingUrl); }
-            else { alert("لا يوجد قناة تعمل حالياً لجلب رابطها!"); }
+        // =========================================================================
+        // الدالة المساعدة الخارقة لتخطي الـ CORS والحماية وسحب الكود (الأساس الجديد)
+        // =========================================================================
+        window.robustFetchHTML = async function(urlToFetch) {
+            let encodedUrl = encodeURIComponent(urlToFetch);
+            let proxies = [
+                'https://api.allorigins.win/get?url=' + encodedUrl, 
+                'https://api.codetabs.com/v1/proxy?quest=' + encodedUrl,
+                'https://corsproxy.io/?' + encodedUrl,
+                'https://thingproxy.freeboard.io/fetch/' + urlToFetch
+            ];
+            
+            let html = null;
+            for (let p of proxies) {
+                try {
+                    let response = await fetch(p);
+                    if (response.ok) {
+                        let text = await response.text();
+                        if (p.includes('allorigins')) {
+                            try { html = JSON.parse(text).contents; } catch(e) { html = text; }
+                        } else {
+                            html = text;
+                        }
+                        if (html && html.length > 50) return html;
+                    }
+                } catch(e) { 
+                    console.log("Proxy failed: " + p); 
+                }
+            }
+            throw new Error("All proxies failed or blocked");
+        };
+
+        // =========================================================================
+        // الدبابة الشاملة للفحص العميق - بتجيب الأخضر واليابس (موحدة لجميع الزراير)
+        // =========================================================================
+        window.runDeepScan = async function(targetUrl) {
+            if(!targetUrl || targetUrl.trim() === '') { 
+                alert("لا يوجد رابط للفحص!"); 
+                return; 
+            }
+
+            window.closeMultiManageModal(); // نقفل النافذة لو مفتوحة
+
+            let existing = document.getElementById("deep-scan-modal");
+            if(existing) existing.remove();
+
+            let container = document.createElement("div");
+            container.id = "deep-scan-modal";
+            container.style.position = "fixed";
+            container.style.top = "0";
+            container.style.left = "0";
+            container.style.width = "100%";
+            container.style.height = "100%";
+            container.style.background = "rgba(0,0,0,0.85)";
+            container.style.zIndex = "100005"; 
+            container.style.display = "flex";
+            container.style.justifyContent = "center";
+            container.style.alignItems = "center";
+            container.style.backdropFilter = "blur(5px)";
+
+            container.innerHTML = `
+                <div style="background: #1e272e; padding: 25px; border-radius: 12px; border: 2px solid #f1c40f; width: 90%; max-width: 650px; max-height: 90vh; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 0 25px rgba(0,0,0,0.7); color: white;">
+                    <h3 style="color:#f1c40f; text-align:center; margin:0; display:flex; align-items:center; justify-content:center; gap:8px;">🔗 الإطارات المستخرجة (Deep Scan)</h3>
+                    <div id="deep-scan-list" style="overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 5px; flex-grow: 1;">
+                        <p style="text-align:center; color:#aaa; font-weight:bold;">جاري الفحص العميق واستخراج جميع الروابط المخفية... يرجى الانتظار ⏳</p>
+                    </div>
+                    <div style="display:flex; justify-content:center; gap:10px; margin-top: 10px; flex-wrap: wrap;">
+                        <button id="deep-scan-add-all" style="background:#e67e22; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer; font-weight:bold; display:none;" onclick="window.addAllDeepScanToFolder()">➕ إضافة الكل للقنوات</button>
+                        <button id="deep-scan-copy-all" style="background:#8e44ad; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer; font-weight:bold; display:none;" onclick="window.copyAllDeepScanLinks()">📋 نسخ كل الروابط</button>
+                        <button onclick="document.getElementById('deep-scan-modal').remove()" style="background:#e74c3c; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">✖ إغلاق</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(container);
+
+            let listContainer = document.getElementById("deep-scan-list");
+            window.currentDeepScanLinks = []; 
+            let extractedSet = new Set();
+            
+            let addRow = (label, link, idPrefix) => {
+                window.currentDeepScanLinks.push(link);
+                let row = document.createElement('div');
+                row.style.display = 'flex';
+                row.style.alignItems = 'center';
+                row.style.gap = '8px';
+                row.style.background = '#2f3640';
+                row.style.padding = '10px';
+                row.style.borderRadius = '8px';
+                row.style.border = '1px solid #555';
+
+                row.innerHTML = `
+                    <span style="color:#f1c40f; font-weight:bold; width: 95px; font-size:13px; text-align:right; white-space:nowrap; overflow:hidden;">${label}:</span>
+                    <input type="text" readonly value="${link}" style="flex:1; background:#111; color:#fff; border:1px solid #555; padding:8px; border-radius:5px; direction:ltr; text-align:left; font-size:13px; outline:none;">
+                    <button onclick="window.open('${link}', '_blank')" style="background:#2980b9; color:white; border:none; padding:8px 12px; border-radius:5px; cursor:pointer; font-size:13px; font-weight:bold; display:flex; align-items:center; gap:5px;">↗ فتح</button>
+                    <button id="btn-copy-${idPrefix}" onclick="window.copySingleLink('${link}', 'btn-copy-${idPrefix}')" style="background:#27ae60; color:white; border:none; padding:8px 12px; border-radius:5px; cursor:pointer; font-size:13px; font-weight:bold; display:flex; align-items:center; gap:5px;">📋 نسخ</button>
+                `;
+                listContainer.appendChild(row);
+            };
+
+            try {
+                let html = await window.robustFetchHTML(targetUrl);
+                
+                listContainer.innerHTML = ""; 
+                addRow("الأساسي", targetUrl, "primary");
+                extractedSet.add(targetUrl);
+
+                let parser = new DOMParser();
+                let doc = parser.parseFromString(html, 'text/html');
+                
+                // 1. فحص الإطارات المباشرة (DOM)
+                let iframes = doc.querySelectorAll('iframe');
+                let count = 1;
+                iframes.forEach((ifr) => {
+                    let src = ifr.getAttribute('src') || ifr.getAttribute('data-src');
+                    if (src && src.trim() !== '' && src !== 'about:blank') {
+                        if (src.startsWith('//')) src = 'https:' + src;
+                        else if (src.startsWith('/')) { try{ let urlObj = new URL(targetUrl); src = urlObj.origin + src; }catch(e){} }
+                        
+                        if(!extractedSet.has(src)) {
+                            addRow("إطار مباشر " + count, src, "frame" + count);
+                            extractedSet.add(src);
+                            count++;
+                        }
+                    }
+                });
+
+                // 2. فحص الإطارات المخفية بأكواد الجافاسكربت
+                let iframeRegex = /<iframe[^>]+src=["'\\]*([^"'>\s\\]+)["'\\]*/gi;
+                let match;
+                while ((match = iframeRegex.exec(html)) !== null) {
+                    let src = match[1].replace(/\\/g, '');
+                    if (src && src.trim() !== '' && src !== 'about:blank') {
+                        if (src.startsWith('//')) src = 'https:' + src;
+                        else if (src.startsWith('/')) { try{ let urlObj = new URL(targetUrl); src = urlObj.origin + src; }catch(e){} }
+                        
+                        if(!extractedSet.has(src)) {
+                            addRow("إطار مخفي " + count, src, "frame-regex" + count);
+                            extractedSet.add(src);
+                            count++;
+                        }
+                    }
+                }
+
+                // 3. صائد الروابط المدمجة في متغيرات (url, source, file, src)
+                let sourceRegex = /(?:src|source|file|url|link)["']?\s*[:=]\s*["'](https?:\/\/[^"'>\s]+)["']/gi;
+                while ((match = sourceRegex.exec(html)) !== null) {
+                    let src = match[1].replace(/\\/g, '');
+                    // فلترة عشان منجيبش صور أو سكربتات عادية
+                    if(!extractedSet.has(src) && (src.includes('embed') || src.includes('live') || src.includes('player') || src.includes('php') || src.includes('html'))) {
+                        addRow("رابط محتمل " + count, src, "prob" + count);
+                        extractedSet.add(src);
+                        count++;
+                    }
+                }
+
+                // 4. فحص روابط البث المباشر (M3U8)
+                let m3u8Regex = /(https?:\/\/[^"'>\s\\]+\.m3u8[^"'>\s\\]*)/gi;
+                let m3u8Match;
+                let m3u8Count = 1;
+                while ((m3u8Match = m3u8Regex.exec(html)) !== null) {
+                    let src = m3u8Match[1].replace(/\\/g, ''); 
+                    if(!extractedSet.has(src)) {
+                        addRow("رابط بث m3u8 " + m3u8Count, src, "m3u8-" + m3u8Count);
+                        extractedSet.add(src);
+                        m3u8Count++;
+                    }
+                }
+                
+                // 5. فحص الإطارات المشفرة بـ Base64 (مواقع الكورة بتستعملها كتير)
+                let b64Regex = /atob\(['"]([^"']+)['"]\)/gi;
+                while ((match = b64Regex.exec(html)) !== null) {
+                    try {
+                        let decoded = atob(match[1]);
+                        if(decoded.includes('<iframe') || decoded.startsWith('http')) {
+                            let tempDoc = parser.parseFromString(decoded, 'text/html');
+                            let ifrs = tempDoc.querySelectorAll('iframe');
+                            ifrs.forEach(ifr => {
+                                let src = ifr.getAttribute('src');
+                                if(src && src.startsWith('http') && !extractedSet.has(src)) {
+                                    addRow("إطار مشفر " + count, src, "frame-b64-" + count);
+                                    extractedSet.add(src);
+                                    count++;
+                                }
+                            });
+                            if(decoded.startsWith('http') && !extractedSet.has(decoded)) {
+                                 addRow("رابط مشفر " + count, decoded, "frame-b64-url-" + count);
+                                 extractedSet.add(decoded);
+                                 count++;
+                            }
+                        }
+                    } catch(e){}
+                }
+
+                if(count === 1 && m3u8Count === 1 && extractedSet.size === 1) {
+                    let msg = document.createElement('p');
+                    msg.style.color = '#f39c12';
+                    msg.style.textAlign = 'center';
+                    msg.style.fontSize = '14px';
+                    msg.innerText = "لم يتم العثور على إطارات إضافية. قد يكون هذا الرابط هو المصدر النهائي أو أن الموقع يستخدم حماية خوادم قوية جداً.";
+                    listContainer.appendChild(msg);
+                }
+                
+                document.getElementById("deep-scan-copy-all").style.display = "block";
+                document.getElementById("deep-scan-add-all").style.display = "block";
+
+            } catch(e) {
+                listContainer.innerHTML = "";
+                addRow("الأساسي", targetUrl, "primary");
+                let err = document.createElement('p');
+                err.style.color = '#e74c3c';
+                err.style.textAlign = 'center';
+                err.style.fontSize = '14px';
+                err.innerText = "تعذر سحب الإطارات الداخلية! الموقع محمي بحماية قوية جداً تمنع المتصفح من قرائته.";
+                listContainer.appendChild(err);
+                document.getElementById("deep-scan-copy-all").style.display = "block";
+                document.getElementById("deep-scan-add-all").style.display = "block";
+            }
+        };
+
+        window.copySingleLink = function(link, btnId) {
+            navigator.clipboard.writeText(link).then(() => {
+                let btn = document.getElementById(btnId);
+                let oldText = btn.innerText;
+                btn.innerText = "✅ تم";
+                btn.style.background = "#2ecc71";
+                setTimeout(() => {
+                    btn.innerText = "📋 نسخ";
+                    btn.style.background = "#27ae60";
+                }, 1500);
+            }).catch(err => alert('فشل النسخ!'));
+        };
+
+        window.copyAllDeepScanLinks = function() {
+            if(window.currentDeepScanLinks && window.currentDeepScanLinks.length > 0) {
+                navigator.clipboard.writeText(window.currentDeepScanLinks.join('\n')).then(() => {
+                    let btn = document.getElementById("deep-scan-copy-all");
+                    btn.innerText = "✅ تم النسخ بنجاح";
+                    btn.style.background = "#2ecc71";
+                    setTimeout(() => { 
+                        btn.innerText = "📋 نسخ كل الروابط"; 
+                        btn.style.background = "#8e44ad";
+                    }, 2000);
+                }).catch(err => alert('فشل النسخ!'));
+            }
+        };
+        
+        window.addAllDeepScanToFolder = function() {
+            if(window.currentDeepScanLinks && window.currentDeepScanLinks.length > 0) {
+                let currentFolder = window.folderState.currentFolderId;
+                if(!window.folderState.folders[currentFolder]) window.folderState.folders[currentFolder] = [];
+                
+                let newChannels = window.currentDeepScanLinks.map((link, idx) => {
+                    return { type: "channel", name: "مستخرج " + (idx+1), link: link, playMode: "internal" };
+                });
+                
+                window.folderState.folders[currentFolder].unshift(...newChannels);
+                window.renderCurrentFolder();
+                window.autoSave();
+                
+                let btn = document.getElementById("deep-scan-add-all");
+                btn.innerText = "✅ تمت الإضافة";
+                btn.style.background = "#2ecc71";
+                setTimeout(() => { 
+                    btn.innerText = "➕ إضافة الكل للقنوات"; 
+                    btn.style.background = "#e67e22";
+                }, 2000);
+            }
         };
 
         window.openEditModal = function(itemIndex, item) {
@@ -1088,75 +1338,6 @@ window.firebaseConfig = {
                 window.autoSave();
                 alert("تم النسخ للقائمة الرئيسية بنجاح!");
                 window.closeEditModal();
-            }
-        };
-
-        window.extractIframesFromURL = async function() {
-            let urlInput = document.getElementById("iframe-extractor-url").value;
-            if (!urlInput || !urlInput.trim()) { alert("برجاء إدخال رابط الموقع أولاً لسحب الإطارات منه!"); return; }
-            let url = urlInput.trim();
-            if (!url.startsWith('http')) url = 'https://' + url;
-            
-            try {
-                let proxyUrl = 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url);
-                let response = await fetch(proxyUrl);
-                if (!response.ok) throw new Error("Network response was not ok");
-                let html = await response.text();
-                let parser = new DOMParser();
-                let doc = parser.parseFromString(html, 'text/html');
-                let extractedChannels = [];
-
-                let iframes = doc.querySelectorAll('iframe');
-                iframes.forEach((ifr, index) => {
-                    let src = ifr.getAttribute('src');
-                    if (src && src.trim() !== '' && src !== 'about:blank') {
-                        if (src.startsWith('//')) src = 'https:' + src;
-                        else if (src.startsWith('/')) { let urlObj = new URL(url); src = urlObj.origin + src; }
-                        extractedChannels.push({ type: "channel", name: "Iframe مسحوب " + (extractedChannels.length + 1), link: src, playMode: "internal" });
-                    }
-                });
-
-                if (extractedChannels.length === 0) {
-                    let iframeRegex = /<iframe[^>]+src=["']([^"']+)["']/gi;
-                    let match;
-                    while ((match = iframeRegex.exec(html)) !== null) {
-                        let src = match[1];
-                         if (src && src.trim() !== '' && src !== 'about:blank') {
-                            if (src.startsWith('//')) src = 'https:' + src;
-                            else if (src.startsWith('/')) { let urlObj = new URL(url); src = urlObj.origin + src; }
-                            extractedChannels.push({ type: "channel", name: "Iframe مخفي " + (extractedChannels.length + 1), link: src, playMode: "internal" });
-                        }
-                    }
-                }
-
-                if (extractedChannels.length > 0) {
-                    let currentFolder = window.folderState.currentFolderId;
-                    if(!window.folderState.folders[currentFolder]) window.folderState.folders[currentFolder] = [];
-                    window.folderState.folders[currentFolder].unshift(...extractedChannels);
-                    window.renderCurrentFolder();
-                    window.autoSave();
-                    alert("تم سحب وإضافة " + extractedChannels.length + " إطار بنجاح!");
-                } else {
-                    let confirmAdd = confirm("لم يتم العثور على إطارات. هل تريد إضافة هذا الرابط نفسه كقناة تشغيل؟");
-                    if(confirmAdd) {
-                        let currentFolder = window.folderState.currentFolderId;
-                        if(!window.folderState.folders[currentFolder]) window.folderState.folders[currentFolder] = [];
-                        window.folderState.folders[currentFolder].unshift({ type: "channel", name: "رابط مباشر", link: url, playMode: "internal" });
-                        window.renderCurrentFolder();
-                        window.autoSave();
-                        alert("تم إضافة الرابط بنجاح!");
-                    }
-                }
-            } catch (e) {
-                let confirmAdd = confirm("الموقع محمي، هل تريد إضافة الرابط كقناة مباشرة؟");
-                if(confirmAdd) {
-                    let currentFolder = window.folderState.currentFolderId;
-                    if(!window.folderState.folders[currentFolder]) window.folderState.folders[currentFolder] = [];
-                    window.folderState.folders[currentFolder].unshift({ type: "channel", name: "رابط محمي", link: url, playMode: "internal" });
-                    window.renderCurrentFolder();
-                    window.autoSave();
-                    alert("تم إضافة الرابط بنجاح!");
-                }
             }
         };
 
@@ -1652,9 +1833,6 @@ window.firebaseConfig = {
         };
         window.closeEditModal = function() { document.getElementById("custom-edit-modal").style.display = 'none'; };
 
-        // ============================================
-        // نقطة بداية المتصفح - هنا سحر التشغيل الحقيقي
-        // ============================================
         window.addEventListener('DOMContentLoaded', (event) => {
             window.syncDOMToState(); 
             window.renderCurrentFolder(); 
