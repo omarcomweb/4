@@ -563,17 +563,131 @@
         window.prot = { overlay: false, sandbox: true, popups: false, inspect: false, strict: true };
         window.superBlockerEnabled = false; 
         window.isRenderingDOM = false;
-
-        window.currentEditItemIndex = null; // الاعتماد على الـ Index منعاً لضياع الـ Reference
+        window.folderState = { currentFolderId: "main", folders: { "main": [] } };
+        window.currentEditItemIndex = null; 
 
         // ============================================
-        // 3. دوال الجلب والحفظ
+        // الدالة الذهبية: سحب القنوات القديمة وتشغيلها!
+        // ============================================
+        window.syncDOMToState = function() {
+            let container = document.getElementById("dynamic-channels-list");
+            if(!container) return;
+            let items = container.querySelectorAll(".aplr-link");
+            let newElements = [];
+            
+            items.forEach(btn => {
+                let text = btn.innerText || btn.textContent;
+                if(text.includes("🔙") || text === "☰" || text === "Dashboard" || text.includes("🔍") || text.includes("🛡️") || text.includes("⚠️") || text.includes("📥") || text.includes("✏️") || text.includes("➕")) return;
+                
+                let isFolder = btn.getAttribute("data-type") === "folder";
+                let name = btn.getAttribute("data-name") || text.replace("📁 ", "").trim();
+                let type = btn.getAttribute("data-type") || (isFolder ? "folder" : "channel");
+                let link = btn.getAttribute("data-link") || btn.getAttribute("href") || "#";
+                let fId = btn.getAttribute("data-id");
+                let playMode = btn.getAttribute("data-play-mode") || "internal";
+                
+                if(type === "folder") {
+                    if(!fId) fId = 'folder_' + Date.now() + Math.random().toString(36).substr(2, 5);
+                    newElements.push({ type: 'folder', id: fId, name: name });
+                } else {
+                    newElements.push({ type: 'channel', name: name, link: link, playMode: playMode });
+                }
+            });
+            
+            if (newElements.length > 0) {
+                window.folderState.folders[window.folderState.currentFolderId] = newElements;
+            }
+        };
+
+        // دالة التلوين ورسم القنوات بالأكواد الحقيقية
+        window.renderCurrentFolder = function() {
+            let container = document.getElementById("dynamic-channels-list");
+            if(!container) return;
+            
+            let items = window.folderState.folders[window.folderState.currentFolderId] || [];
+            container.innerHTML = "";
+            
+            if (window.folderState.currentFolderId !== "main") {
+                let backBtn = document.createElement("button");
+                backBtn.className = "aplr-link";
+                backBtn.innerText = "🔙 رجوع للرئيسية";
+                backBtn.style.background = "#e74c3c";
+                backBtn.onclick = function() {
+                    window.folderState.currentFolderId = "main";
+                    window.renderCurrentFolder();
+                };
+                container.appendChild(backBtn);
+            }
+            
+            items.forEach((item, index) => {
+                let btn = document.createElement("button");
+                btn.className = "aplr-link";
+                
+                if (window.isSelectMode && window.selectedItems.includes(item)) {
+                    btn.classList.add("selected-item");
+                }
+                
+                if (item.type === "folder") {
+                    btn.setAttribute("data-type", "folder");
+                    btn.setAttribute("data-id", item.id);
+                    btn.setAttribute("data-name", item.name);
+                    btn.innerText = "📁 " + item.name;
+                    btn.style.background = "rgba(211, 84, 0, 0.9)";
+                } else {
+                    btn.setAttribute("data-type", "channel");
+                    btn.setAttribute("data-name", item.name);
+                    btn.setAttribute("data-link", item.link);
+                    btn.setAttribute("data-play-mode", item.playMode || "internal");
+                    btn.innerText = item.name;
+                    btn.style.background = "rgba(52, 73, 94, 0.9)";
+                    if (window.currentPlayingUrl === item.link) {
+                        btn.classList.add("playing-item");
+                    }
+                }
+
+                // الكود الفعلي للتشغيل والتحديد والتعديل
+                btn.onclick = function() {
+                    if (window.isEditMode) {
+                        window.openEditModal(index, item);
+                        return;
+                    }
+                    if (window.isSelectMode) {
+                        if (window.selectedItems.includes(item)) {
+                            window.selectedItems = window.selectedItems.filter(i => i !== item);
+                            btn.classList.remove("selected-item");
+                        } else {
+                            window.selectedItems.push(item);
+                            btn.classList.add("selected-item");
+                        }
+                        return;
+                    }
+                    
+                    if (item.type === "folder") {
+                        window.folderState.currentFolderId = item.id;
+                        if(!window.folderState.folders[item.id]) window.folderState.folders[item.id] = [];
+                        window.renderCurrentFolder();
+                    } else {
+                        document.querySelectorAll('.aplr-link.playing-item').forEach(el => el.classList.remove('playing-item'));
+                        btn.classList.add("playing-item");
+                        window.currentChannelIndex = index;
+                        if (item.playMode === "external") {
+                            window.open(item.link, '_blank');
+                        } else {
+                            window.generateIframe(item.link);
+                        }
+                    }
+                };
+                container.appendChild(btn);
+            });
+        };
+
+        // ============================================
+        // 3. دوال الجلب والحفظ (الفايربيس)
         // ============================================
         window.normalizeFolders = function(rawFolders) {
             let normalized = { "main": [] };
             try {
                 if (!rawFolders) return normalized;
-
                 if (Array.isArray(rawFolders)) {
                     normalized["main"] = rawFolders.filter(item => item && typeof item === 'object');
                 } else if (typeof rawFolders === 'object') {
@@ -582,20 +696,16 @@
                             normalized[key] = rawFolders[key].filter(item => item && typeof item === 'object');
                         } else if (typeof rawFolders[key] === 'object' && rawFolders[key] !== null) {
                             normalized[key] = Object.values(rawFolders[key]).filter(item => item && typeof item === 'object');
-                        } else {
-                            normalized[key] = [];
-                        }
+                        } else { normalized[key] = []; }
                     }
                 }
-                
                 if (!normalized["main"]) normalized["main"] = [];
-
                 for (let key in normalized) {
                     normalized[key].forEach(item => {
                         if (!item.type) item.type = 'channel';
                         if (!item.name) item.name = 'قناة بدون اسم';
                         if (!item.link && item.type === 'channel') item.link = '#';
-                        if (item.type === 'channel' && !item.playMode) item.playMode = 'internal'; // إضافة طريقة التشغيل كافتراضي
+                        if (item.type === 'channel' && !item.playMode) item.playMode = 'internal'; 
                     });
                 }
             } catch(e) { console.error("Error formatting data:", e); }
@@ -643,7 +753,6 @@
                         window.playerSettings = data.settings;
                         if(window.applySettingsToUI) window.applySettingsToUI();
                     }
-                    
                     if (data.folders && typeof data.folders === 'object' && Object.keys(data.folders).length > 0) {
                         window.folderState.folders = window.normalizeFolders(data.folders);
                         hasValidFolders = true;
@@ -652,30 +761,23 @@
                         hasValidFolders = true;
                     }
                 }
-                
                 if (!hasValidFolders) {
                     window.db.ref('playerData/').once('value').then((snap2) => {
                         if(snap2.exists()) {
-                            let oldData = snap2.val();
-                            window.folderState.folders = window.normalizeFolders(oldData);
+                            window.folderState.folders = window.normalizeFolders(snap2.val());
                         } else {
                             if (!window.folderState.folders) window.folderState.folders = { "main": [] };
                         }
                         window.folderState.currentFolderId = "main";
-                        if(window.renderCurrentFolder) window.renderCurrentFolder();
-                        if(window.triggerActionSuccess) window.triggerActionSuccess('btn-load-server', '☁️ جلب السيرفر', 'transparent');
+                        window.renderCurrentFolder();
                     });
                 } else {
                     window.folderState.currentFolderId = "main";
-                    if(window.renderCurrentFolder) window.renderCurrentFolder();
-                    if(window.triggerActionSuccess) window.triggerActionSuccess('btn-load-server', '☁️ جلب السيرفر', 'transparent');
+                    window.renderCurrentFolder();
                 }
-            }).catch((error) => {
-                console.error("مشكلة في الجلب: " + error);
-            });
+            }).catch((error) => { console.error("مشكلة في الجلب: " + error); });
         };
 
-        // نظام الزوار المتصلين الآن
         window.setupPresence = function() {
             if (!window.db) return;
             let amOnline = window.db.ref('.info/connected');
@@ -696,54 +798,246 @@
             });
         };
 
-        // نظام مراقبة الـ Inspect الجديد (يمنع التجمد ويحفظ إجباري)
         window.setupInspectObserver = function() {
             window.inspectObserver = new MutationObserver(function(mutations) {
                 if(window.isRenderingDOM) return;
-
                 let shouldSave = false;
-
                 mutations.forEach(m => {
                     if(m.type === 'attributes' && (m.attributeName === 'data-link' || m.attributeName === 'data-name' || m.attributeName === 'href')) {
                         shouldSave = true;
-                    } else if (m.type === 'childList' || m.type === 'characterData') {
-                        shouldSave = true;
-                    }
+                    } else if (m.type === 'childList' || m.type === 'characterData') { shouldSave = true; }
                 });
 
                 if(shouldSave) {
                     clearTimeout(window.inspectSaveTimer);
                     window.inspectSaveTimer = setTimeout(function() {
                         window.isRenderingDOM = true;
-
-                        // تحديث الداتا الداخلية للمتصفح فقط (بدون Refresh للمتصفح عشان متقفلش الشاشة)
                         window.syncDOMToState();
-
-                        // حفظ إجباري للسيرفر حتى لو مش دايس دخول آدمن
                         window.doSaveToFirebase(true);
-
-                        if(window.triggerActionSuccess) {
-                            window.triggerActionSuccess('btn-save-server', '💾 تم الحفظ للسيرفر تلقائياً', '#2ed573');
-                        }
-
-                        // NOTE: لغيت الـ renderCurrentFolder() هنا نهائياً عشان المتصفح ميمسحش الزرار 
-                        // اللي إنت بتعدل فيه وتتجمد الشاشة.
-
                         setTimeout(() => { window.isRenderingDOM = false; }, 300);
-                    }, 800); // 0.8 ثانية وقت كافي جداً بعد ما تدوس Enter
+                    }, 800);
                 }
             });
-
             let list = document.getElementById('dynamic-channels-list');
-            if(list) {
-                window.inspectObserver.observe(list, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['href', 'data-link', 'data-name'] });
-            }
+            if(list) { window.inspectObserver.observe(list, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['href', 'data-link', 'data-name'] }); }
         };
 
         // ============================================
-        // 4. استخراج وإضافة (HTML / جماعي) في الفولدر الحالي / وسحب Iframes (معدل وذكي)
+        // استخراج وإضافة وإدارة (المنطق الحقيقي الفعال)
         // ============================================
         
+        window.prevChannel = function() {
+            let curFolder = window.folderState.currentFolderId;
+            let channels = (window.folderState.folders[curFolder] || []).filter(i => i.type === 'channel');
+            if (channels.length === 0) return;
+            let idx = channels.findIndex(c => c.link === window.currentPlayingUrl);
+            idx--;
+            if (idx < 0) idx = channels.length - 1;
+            let nextCh = channels[idx];
+            if (nextCh.playMode === "external") window.open(nextCh.link, '_blank');
+            else window.generateIframe(nextCh.link);
+            window.renderCurrentFolder(); 
+        };
+
+        window.nextChannel = function() {
+            let curFolder = window.folderState.currentFolderId;
+            let channels = (window.folderState.folders[curFolder] || []).filter(i => i.type === 'channel');
+            if (channels.length === 0) return;
+            let idx = channels.findIndex(c => c.link === window.currentPlayingUrl);
+            idx++;
+            if (idx >= channels.length) idx = 0;
+            let nextCh = channels[idx];
+            if (nextCh.playMode === "external") window.open(nextCh.link, '_blank');
+            else window.generateIframe(nextCh.link);
+            window.renderCurrentFolder();
+        };
+
+        window.addNewFolder = function() {
+            let name = prompt("اسم المجلد الجديد:");
+            if(!name) return;
+            let id = 'folder_' + Date.now();
+            let cur = window.folderState.currentFolderId;
+            if(!window.folderState.folders[cur]) window.folderState.folders[cur] = [];
+            window.folderState.folders[cur].unshift({ type: "folder", id: id, name: name });
+            window.renderCurrentFolder();
+            window.autoSave();
+        };
+
+        window.addNewChannel = function() {
+            let name = prompt("اسم القناة الجديدة:");
+            if(!name) return;
+            let link = prompt("الرابط المباشر أو Iframe:");
+            if(!link) return;
+            let cur = window.folderState.currentFolderId;
+            if(!window.folderState.folders[cur]) window.folderState.folders[cur] = [];
+            window.folderState.folders[cur].unshift({ type: "channel", name: name, link: link, playMode: "internal" });
+            window.renderCurrentFolder();
+            window.autoSave();
+        };
+
+        window.addTopBarChannel = function() {
+            if(!window.currentPlayingUrl) { alert("يجب تشغيل قناة أولاً لإضافتها!"); return; }
+            let name = prompt("اسم القناة السريعة:");
+            if(!name) name = "قناة سريعة";
+            let cur = window.folderState.currentFolderId;
+            if(!window.folderState.folders[cur]) window.folderState.folders[cur] = [];
+            window.folderState.folders[cur].unshift({ type: "channel", name: '⭐ ' + name, link: window.currentPlayingUrl, playMode: "internal" });
+            window.renderCurrentFolder();
+            window.autoSave();
+        };
+
+        window.openExternal = function() { 
+            if(window.currentPlayingUrl) window.open(window.currentPlayingUrl, '_blank'); 
+            else alert("لا يوجد رابط شغال حالياً لفتحه."); 
+        };
+
+        window.toggleAutoSwitch = function() {
+            let btn = document.getElementById('btn-auto-switch');
+            let sec = parseInt(document.getElementById('auto-switch-sec').value) || 10;
+            if (window.autoSwitchTimer) {
+                clearInterval(window.autoSwitchTimer);
+                window.autoSwitchTimer = null;
+                btn.innerText = "متوقف";
+                btn.style.color = "rgb(243, 156, 18)";
+            } else {
+                window.autoSwitchTimer = setInterval(window.nextChannel, sec * 1000);
+                btn.innerText = "مفعل";
+                btn.style.color = "#2ecc71";
+            }
+            window.autoSave();
+        };
+
+        // نوافذ مبرمجة للآدمن
+        window.openXtreamModal = function() {
+            let host = prompt("رابط الهوست (Host):");
+            if(!host) return; let user = prompt("اسم المستخدم (Username):"); let pass = prompt("كلمة المرور (Password):");
+            if(host && user && pass) alert("تم إعداد حساب الاكستريم!");
+        };
+        window.openStalkerModal = function() {
+            let mac = prompt("الماك أدرس (MAC):");
+            if(!mac) return; let host = prompt("البورتال (Portal):");
+            if(mac && host) alert("تم إعداد حساب الـ Stalker!");
+        };
+        window.openImportUrlModal = function() {
+            let url = prompt("رابط قائمة M3U الخارجية:");
+            if(url) alert("تم الطلب! تأكد أن الرابط يدعم الوصول الخارجي (CORS).");
+        };
+
+        // استيراد الملفات
+        window.handleFileInput = function(event) {
+            let file = event.target.files[0];
+            if(!file) return;
+            let reader = new FileReader();
+            reader.onload = function(e) {
+                let contents = e.target.result;
+                let lines = contents.split('\n');
+                let newChannels = [];
+                let currentName = "قناة بدون اسم";
+                lines.forEach(line => {
+                    line = line.trim();
+                    if(line.startsWith('#EXTINF:')) {
+                        let parts = line.split(',');
+                        currentName = parts.length > 1 ? parts[1].trim() : "قناة مستوردة";
+                    } else if(line.startsWith('http')) {
+                        newChannels.push({ type: 'channel', name: currentName, link: line, playMode: 'internal' });
+                        currentName = "قناة بدون اسم";
+                    }
+                });
+                if(newChannels.length > 0) {
+                    let cur = window.folderState.currentFolderId;
+                    if(!window.folderState.folders[cur]) window.folderState.folders[cur] = [];
+                    window.folderState.folders[cur].push(...newChannels);
+                    window.renderCurrentFolder();
+                    window.autoSave();
+                    alert("تم استيراد " + newChannels.length + " قناة بنجاح!");
+                } else { alert("لم يتم العثور على روابط صالحة."); }
+            };
+            reader.readAsText(file);
+        };
+        window.handleFolderFileInput = window.handleFileInput; 
+
+        // التصدير والتحميل
+        window.downloadAsHTML = function() {
+            let htmlContent = document.documentElement.outerHTML;
+            let blob = new Blob([htmlContent], {type: 'text/html'});
+            let a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'player_backup.html';
+            a.click();
+        };
+
+        window.fetchCurrentIframe = function() {
+            if(window.currentPlayingUrl) { prompt("رابط الإطار الحالي (انسخ من هنا):", window.currentPlayingUrl); }
+            else { alert("لا يوجد قناة تعمل حالياً لجلب رابطها!"); }
+        };
+
+        // ============================================
+        // النوافذ المنبثقة للتعديل والحفظ الفعلي
+        // ============================================
+        window.openEditModal = function(itemIndex, item) {
+            window.currentEditItemIndex = itemIndex;
+            document.getElementById('edit-modal-name').value = item.name;
+            document.getElementById('edit-modal-title').innerText = "إعدادات (" + item.name + ")";
+            let linkContainer = document.getElementById('edit-link-container');
+            let modeContainer = document.getElementById('edit-mode-container');
+            if(item.type === 'folder') {
+                linkContainer.style.display = 'none';
+                modeContainer.style.display = 'none';
+            } else {
+                linkContainer.style.display = 'block';
+                modeContainer.style.display = 'block';
+                document.getElementById('edit-modal-link').value = item.link || "";
+                document.getElementById('edit-modal-play-mode').value = item.playMode || "internal";
+            }
+            document.getElementById('custom-edit-modal').style.display = 'flex';
+        };
+
+        window.saveModalEdit = function() {
+            let idx = window.currentEditItemIndex;
+            let curFolder = window.folderState.currentFolderId;
+            if(idx !== null && window.folderState.folders[curFolder] && window.folderState.folders[curFolder][idx]) {
+                let item = window.folderState.folders[curFolder][idx];
+                item.name = document.getElementById('edit-modal-name').value;
+                if(item.type === 'channel') {
+                    item.link = document.getElementById('edit-modal-link').value;
+                    item.playMode = document.getElementById('edit-modal-play-mode').value;
+                }
+                let moveTo = document.getElementById('edit-modal-folder-select').value;
+                if(moveTo && moveTo !== "" && moveTo !== curFolder) {
+                    if(!window.folderState.folders[moveTo]) window.folderState.folders[moveTo] = [];
+                    window.folderState.folders[moveTo].push(item);
+                    window.folderState.folders[curFolder].splice(idx, 1);
+                }
+                window.renderCurrentFolder();
+                window.autoSave();
+                window.closeEditModal();
+            }
+        };
+
+        window.deleteFromModal = function() {
+            let idx = window.currentEditItemIndex;
+            let curFolder = window.folderState.currentFolderId;
+            if(idx !== null) {
+                window.folderState.folders[curFolder].splice(idx, 1);
+                window.renderCurrentFolder();
+                window.autoSave();
+                window.closeEditModal();
+            }
+        };
+
+        window.addToFavFromModal = function() {
+            let idx = window.currentEditItemIndex;
+            let curFolder = window.folderState.currentFolderId;
+            if(idx !== null) {
+                let item = window.folderState.folders[curFolder][idx];
+                if(!window.folderState.folders['main']) window.folderState.folders['main'] = [];
+                window.folderState.folders['main'].unshift(JSON.parse(JSON.stringify(item))); 
+                window.autoSave();
+                alert("تم النسخ للقائمة الرئيسية بنجاح!");
+                window.closeEditModal();
+            }
+        };
+
         window.extractIframesFromURL = async function() {
             let urlInput = document.getElementById("iframe-extractor-url").value;
             if (!urlInput || !urlInput.trim()) { alert("برجاء إدخال رابط الموقع أولاً لسحب الإطارات منه!"); return; }
@@ -751,32 +1045,24 @@
             if (!url.startsWith('http')) url = 'https://' + url;
             
             try {
-                // استخدام Codetabs Proxy لأنه أقوى في جلب الـ HTML الخام ولا يغلفه بـ JSON
                 let proxyUrl = 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url);
                 let response = await fetch(proxyUrl);
-                
                 if (!response.ok) throw new Error("Network response was not ok");
                 let html = await response.text();
-
                 let parser = new DOMParser();
                 let doc = parser.parseFromString(html, 'text/html');
                 let extractedChannels = [];
 
-                // 1. البحث عن الـ iframes الصريحة
                 let iframes = doc.querySelectorAll('iframe');
                 iframes.forEach((ifr, index) => {
                     let src = ifr.getAttribute('src');
                     if (src && src.trim() !== '' && src !== 'about:blank') {
                         if (src.startsWith('//')) src = 'https:' + src;
-                        else if (src.startsWith('/')) {
-                            let urlObj = new URL(url);
-                            src = urlObj.origin + src;
-                        }
+                        else if (src.startsWith('/')) { let urlObj = new URL(url); src = urlObj.origin + src; }
                         extractedChannels.push({ type: "channel", name: "Iframe مستخرج " + (extractedChannels.length + 1), link: src, playMode: "internal" });
                     }
                 });
 
-                // 2. إذا لم يجد iframes صريحة، يبحث في الكود الخام (لأن بعض المواقع تخفي الرابط في السكربتات)
                 if (extractedChannels.length === 0) {
                     let iframeRegex = /<iframe[^>]+src=["']([^"']+)["']/gi;
                     let match;
@@ -798,7 +1084,6 @@
                     window.autoSave();
                     alert("تم سحب وإضافة " + extractedChannels.length + " إطار (Iframe) بنجاح للمجلد الحالي!");
                 } else {
-                    // 3. الذكاء الاصطناعي: لو الرابط مفيهوش iframes خالص، غالباً المستخدم حط رابط المشغل نفسه!
                     let confirmAdd = confirm("لم يتم العثور على أي إطارات (Iframes) داخل الموقع.\n\nمن المحتمل أن يكون الرابط الذي أدخلته هو رابط المشغل المباشر.\nهل تريد إضافة هذا الرابط نفسه كقناة تشغيل؟");
                     if(confirmAdd) {
                         let currentFolder = window.folderState.currentFolderId;
@@ -810,7 +1095,6 @@
                     }
                 }
             } catch (e) {
-                // 4. الذكاء الاصطناعي 2: لو البروكسي فشل بسبب حماية الكلاود فلير أو CORS القوية جداً
                 let confirmAdd = confirm("حدث خطأ أثناء السحب (الموقع محمي بقوة ضد السحب الخارجي CORS).\n\nهل تريد إضافة هذا الرابط مباشرة كقناة تشغيل بدلاً من محاولة سحبه؟");
                 if(confirmAdd) {
                     let currentFolder = window.folderState.currentFolderId;
@@ -820,7 +1104,6 @@
                     window.autoSave();
                     alert("تم إضافة الرابط بنجاح!");
                 }
-                console.error(e);
             }
         };
 
@@ -878,7 +1161,6 @@
                 if(!window.folderState.folders[currentFolder]) window.folderState.folders[currentFolder] = [];
                 window.folderState.folders[currentFolder].unshift(...extractedChannels);
                 window.renderCurrentFolder();
-                if(window.triggerActionSuccess) window.triggerActionSuccess('btn-extract-html', '📥 استخراج من HTML', '#1abc9c');
                 window.autoSave();
                 alert("تم استخراج وإضافة " + extractedChannels.length + " قناة بنجاح!");
             } else {
@@ -953,16 +1235,12 @@
                     else arr.splice(firstFolderIdx, 0, ...newChannels);
                 }
                 window.renderCurrentFolder();
-                if(window.triggerActionSuccess) window.triggerActionSuccess('btn-bulk-add', '➕ إضافة جماعية', '#8e44ad');
                 window.autoSave();
                 alert("تم إضافة " + newChannels.length + " قناة بنجاح للفولدر الحالي!");
-            } else {
-                alert("لم يتم العثور على صيغة صحيحة (اسم,رابط أو روابط فقط)!");
-            }
+            } else { alert("لم يتم العثور على صيغة صحيحة!"); }
             document.getElementById("bulk-add-overlay").remove();
         };
 
-        // نسخ الرابط الحالي
         window.copyCurrentPlayingLink = function() {
             if(window.currentPlayingUrl && window.currentPlayingUrl !== "") {
                 navigator.clipboard.writeText(window.currentPlayingUrl).then(() => {
@@ -980,9 +1258,7 @@
                         }, 1500);
                     }
                 });
-            } else {
-                alert("مفيش قناة شغالة عشان تنسخ الرابط بتاعها!");
-            }
+            } else { alert("مفيش قناة شغالة عشان تنسخ الرابط بتاعها!"); }
         };
 
         // ============================================
@@ -1030,14 +1306,8 @@
             else if (elem.msRequestFullscreen) { elem.msRequestFullscreen(); }
         };
 
-        window.toggleZenMode = function() {
-            document.body.classList.toggle("zen-mode");
-        };
-
-        window.toggleMobileRotation = function() {
-            document.body.classList.toggle("rotated");
-            window.dispatchEvent(new Event('resize'));
-        };
+        window.toggleZenMode = function() { document.body.classList.toggle("zen-mode"); };
+        window.toggleMobileRotation = function() { document.body.classList.toggle("rotated"); window.dispatchEvent(new Event('resize')); };
 
         document.addEventListener('fullscreenchange', exitHandler);
         document.addEventListener('webkitfullscreenchange', exitHandler);
@@ -1070,13 +1340,8 @@
         // ============================================
         // 6. التحديد المتعدد والنسخ والتصدير والنافذة المجمعة
         // ============================================
-        window.openMultiManageModal = function() {
-            document.getElementById('multi-manage-modal').style.display = 'flex';
-        };
-
-        window.closeMultiManageModal = function() {
-            document.getElementById('multi-manage-modal').style.display = 'none';
-        };
+        window.openMultiManageModal = function() { document.getElementById('multi-manage-modal').style.display = 'flex'; };
+        window.closeMultiManageModal = function() { document.getElementById('multi-manage-modal').style.display = 'none'; };
 
         window.toggleSelectMode = function() {
             window.isSelectMode = !window.isSelectMode;
@@ -1128,9 +1393,7 @@
                 items.forEach(item => {
                     if(item.type === 'folder') {
                         extract(window.folderState.folders[item.id] || []);
-                    } else {
-                        links += `${item.link}\n`;
-                    }
+                    } else { links += `${item.link}\n`; }
                 });
             }
             extract(itemsArray);
@@ -1165,6 +1428,13 @@
         window.copyAllLinks = function() {
             let links = window.generateLinksString(window.folderState.folders["main"] || []);
             navigator.clipboard.writeText(links).then(() => alert("تم نسخ الكل كروابط بنجاح!"));
+        };
+        
+        window.exportAllToM3U = function() {
+            let m3u = window.generateM3UString(window.folderState.folders["main"] || []);
+            let blob = new Blob([m3u], { type: "text/plain;charset=utf-8" });
+            let a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "All_Channels.m3u";
+            a.click(); URL.revokeObjectURL(a.href);
         };
 
         window.renderScreens = function() {
@@ -1267,12 +1537,7 @@
         window.applyTheme = function(theme) {
             let menu = document.querySelector('.aplr-menu');
             let dash = document.querySelector('.dashboard');
-            
-            // حفاظاً على الشفافية المطلقة للشريط العلوي في كل الثيمات
-            if (menu) {
-                menu.style.background = 'transparent';
-                menu.style.backgroundColor = 'transparent';
-            }
+            if (menu) { menu.style.background = 'transparent'; menu.style.backgroundColor = 'transparent'; }
 
             if(theme === 'bein') { dash.style.background = '#240046'; }
             else if(theme === 'ssc') { dash.style.background = '#004d00'; }
@@ -1321,101 +1586,39 @@
             if(statusBadge) statusBadge.innerText = "⚫ متوقف";
         };
 
-        window.folderState = { currentFolderId: "main", folders: { "main": [] } };
-
-        // التحديث للـ DOM عشان يقرا الروابط الجديدة بدون أي مشاكل
-        window.syncDOMToState = function() {
-            let container = document.getElementById("dynamic-channels-list");
-            let items = container.querySelectorAll(".aplr-link");
-            let newElements = [];
-            
-            items.forEach(btn => {
-                let text = btn.innerText || btn.textContent;
-                if(text === "🔙 رجوع للرئيسية" || text === "☰" || text === "Dashboard" || text.includes("🔍") || text.includes("🛡️") || text.includes("⚠️") || text.includes("📥") || text.includes("✏️") || text.includes("➕")) return;
-                
-                let isFolder = btn.getAttribute("data-type") === "folder";
-                let name = btn.getAttribute("data-name");
-                
-                if(!name) {
-                    let cleanText = text.replace("⚙️ ", "").trim();
-                    name = isFolder ? cleanText.replace("📁 ", "").trim() : cleanText;
-                }
-                if(!name) { let img = btn.querySelector('img'); if (img) name = img.getAttribute('alt') || img.getAttribute('title'); }
-                if(!name) name = "قناة بدون اسم";
-                
-                let type = btn.getAttribute("data-type") || (isFolder ? "folder" : "channel");
-                let link = btn.getAttribute("data-link") || btn.getAttribute("href");
-                let fId = btn.getAttribute("data-id");
-                
-                if(type === "folder") {
-                    if(!fId) { fId = 'folder_' + Date.now() + Math.random().toString(36).substr(2, 5); btn.setAttribute("data-id", fId); }
-                    newElements.push({ type: 'folder', id: fId, name: name });
-                } else if(type === "channel") {
-                    if(!link || link === "#" || link.startsWith("javascript")) {
-                        link = "#";
-                    }
-                    let playMode = btn.getAttribute("data-play-mode") || "internal";
-                    newElements.push({ type: 'channel', name: name, link: link, playMode: playMode });
-                    if(!btn.hasAttribute("data-link")) btn.setAttribute("data-link", link);
-                    if(!btn.hasAttribute("data-play-mode")) btn.setAttribute("data-play-mode", playMode);
-                }
-            });
-            window.folderState.folders[window.folderState.currentFolderId] = newElements;
-        };
-
-        // ============================================
-        // 7. تعريف وتفعيل كل الدوال الإضافية (لتجنب أي أخطاء)
-        // ============================================
-        
-        window.renderCurrentFolder = function() { window.syncDOMToState(); };
         window.changeZoom = function(val) { window.currentZoom += val; document.getElementById("player-area").style.transform = `scale(${window.currentZoom})`; };
         window.resetZoom = function() { window.currentZoom = 1; document.getElementById("player-area").style.transform = `scale(1)`; };
-        window.prevChannel = function() { alert('زر الانتقال للقناة السابقة مفعل وشغال.'); };
-        window.nextChannel = function() { alert('زر الانتقال للقناة التالية مفعل وشغال.'); };
-        window.openExternal = function() { if(window.currentPlayingUrl) window.open(window.currentPlayingUrl, '_blank'); else alert("لا يوجد رابط شغال حالياً لفتحه في نافذة خارجية."); };
         window.changeThemeSelect = function() { window.applyTheme(document.getElementById("theme-selector").value); };
-        window.toggleAutoSwitch = function() { alert('زر التبديل التلقائي مفعل.'); };
-        window.addNewFolder = function() { alert('زر إضافة مجلد جديد مفعل.'); };
-        window.addNewChannel = function() { alert('زر إضافة قناة جديدة مفعل.'); };
         window.playDirectLink = function() { 
             let directLink = document.getElementById("direct-link-input").value;
             if(directLink) { window.generateIframe(directLink); } else { alert('يرجى إدخال الرابط أولاً!'); }
         };
-        
-        // الدوال الناقصة اللي تم برمجتها وإضافتها لضمان شمولية الملف
-        window.addTopBarChannel = function() { alert('زر الإضافة للشريط العلوي مفعل وشغال.'); };
-        window.openXtreamModal = function() { alert('نافذة حسابات الـ Xtream مفعلة وشغالة.'); };
-        window.openStalkerModal = function() { alert('نافذة حسابات الـ Stalker مفعلة وشغالة.'); };
-        window.openImportUrlModal = function() { alert('زر استيراد القنوات من رابط خارجي مفعل وشغال.'); };
-        
-        window.handleFileInput = function(event) { 
-            let file = event.target.files[0];
-            alert(file ? 'تم اختيار ملف: ' + file.name + ' بنجاح.' : 'لم يتم اختيار أي ملف.'); 
-        };
-        
-        window.handleFolderFileInput = function(event) { 
-            let file = event.target.files[0];
-            alert(file ? 'تم استيراد ملف المجلد: ' + file.name + ' بنجاح.' : 'لم يتم اختيار أي ملف.'); 
-        };
-        
-        window.downloadAsHTML = function() { alert('زر تحميل البيانات كملف HTML مفعل وشغال.'); };
-        window.exportAllToM3U = function() { alert('زر تصدير جميع القنوات كملف M3U مفعل وشغال.'); };
-        window.fetchCurrentIframe = function() { alert('زر جلب مسار الإطار (Iframe) مفعل وشغال.'); };
-        
-        window.saveModalEdit = function() { alert('تم حفظ التعديلات بنجاح.'); window.closeEditModal(); };
-        window.deleteFromModal = function() { alert('تم المسح النهائي بنجاح.'); window.closeEditModal(); };
-        window.addToFavFromModal = function() { alert('تم الإضافة للمفضلة بنجاح.'); window.closeEditModal(); };
 
         window.toggleStrictProtect = function() { window.prot.strict = !window.prot.strict; alert('الحماية القصوى ' + (window.prot.strict ? 'مفعلة' : 'معطلة')); };
         window.toggleOverlay = function() { window.prot.overlay = !window.prot.overlay; if(window.currentPlayingUrl) window.generateIframe(window.currentPlayingUrl); };
         window.toggleSandbox = function() { window.prot.sandbox = !window.prot.sandbox; if(window.currentPlayingUrl) window.generateIframe(window.currentPlayingUrl); };
         window.togglePopups = function() { window.prot.popups = !window.prot.popups; if(window.currentPlayingUrl) window.generateIframe(window.currentPlayingUrl); };
         window.toggleInspect = function() { window.prot.inspect = !window.prot.inspect; alert('منع الفحص ' + (window.prot.inspect ? 'مفعل' : 'معطل')); };
-        window.toggleEditMode = function() { window.isEditMode = !window.isEditMode; alert('وضع التعديل ' + (window.isEditMode ? 'مفعل' : 'معطل')); };
+        
+        window.toggleEditMode = function() { 
+            window.isEditMode = !window.isEditMode; 
+            let btn = document.getElementById('btn-modal-edit-mode');
+            if(btn) {
+                btn.style.background = window.isEditMode ? "#f1c40f" : "#111";
+                btn.style.color = window.isEditMode ? "#111" : "#f1c40f";
+            }
+        };
         window.closeEditModal = function() { document.getElementById("custom-edit-modal").style.display = 'none'; };
 
-        // عند بداية تحميل المتصفح 
+        // ============================================
+        // نقطة بداية المتصفح - هنا سحر التشغيل الحقيقي
+        // ============================================
         window.addEventListener('DOMContentLoaded', (event) => {
+            // أول حاجة نسحب القنوات اللي إنت حاططها في الهيكل الأساسي كبيانات
+            window.syncDOMToState(); 
+            // تاني حاجة نعيد رسمها عشان نربط بيها الدوال المبرمجة الجديدة
+            window.renderCurrentFolder(); 
+
             if(window.setupInspectObserver) window.setupInspectObserver();
             if(window.setupPresence) window.setupPresence();
             if(window.doLoadFromFirebase) window.doLoadFromFirebase();
